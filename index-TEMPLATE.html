@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<!--
+  🎁 TEMPLATE ฉบับแจกต่อ — หน้าเว็บแจ้งลาเรียน (LIFF)
+  =====================================================
+  ✏️ สิ่งที่ต้องเติมเองในไฟล์นี้ (ค้นหาคำว่า "ใส่_" ได้เลย มี 2 จุด):
+    1. LIFF_ID  → จาก LINE Developers > LINE Login channel > แท็บ LIFF
+    2. API_URL  → Web App URL จาก Apps Script (ลงท้าย /exec)
+
+  🚀 ลำดับการติดตั้ง:
+    1. ตั้งค่าฝั่ง Apps Script ให้เสร็จก่อน (ดูไกด์ในไฟล์ Code.gs)
+    2. สร้าง LIFF App ใน "LINE Login channel"
+       (Size: Full / Scope: profile + openid / สถานะ channel: Published)
+       Endpoint URL = URL เว็บของคุณบน Vercel
+    3. เติมค่า 2 จุดข้างบนในไฟล์นี้
+    4. อัปโหลดไฟล์นี้ขึ้น Vercel (หรือ hosting อื่นที่เป็น https)
+    5. เปิดใช้งานผ่านลิงก์ https://liff.line.me/{LIFF_ID}
+       (แนะนำผูกกับ Rich Menu ของ LINE OA)
+
+  ⚠️ อย่า host หน้านี้บน Google Apps Script โดยตรง
+     เพราะ LIFF login จะโดนบล็อกใน iframe ของ GAS
+-->
+
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📋 แจ้งลาเรียน | คอมพิวเตอร์ศึกษา มจพ.</title>
+
+<!-- Bootstrap 5 -->
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<!-- Font Awesome -->
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" rel="stylesheet">
+<!-- Google Fonts: IBM Plex Sans Thai -->
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --ink: #1a1a2e;
+    --ink-soft: #8a8a9e;
+    --paper: #fafaf7;
+    --card: #ffffff;
+    --line: #ececf2;
+    --mint: #d9f7e8;
+    --peach: #ffe9d6;
+    --sky: #e3edff;
+    --lilac: #efe6ff;
+    --radius: 18px;
+  }
+  * { font-family: 'IBM Plex Sans Thai', sans-serif; }
+  body { background: var(--paper); color: var(--ink); min-height: 100vh; }
+
+  .app-shell { max-width: 560px; margin: 0 auto; padding: 20px 16px 48px; }
+
+  /* ---------- Loading ---------- */
+  #loading {
+    position: fixed; inset: 0; background: var(--paper);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 2000; gap: 12px;
+  }
+  .loading-emoji { font-size: 3rem; animation: bob 1.2s ease-in-out infinite; }
+  @keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+
+  /* ---------- Profile ---------- */
+  .profile-card {
+    background: var(--ink); color: #fff; border-radius: var(--radius);
+    padding: 18px 20px; display: flex; align-items: center; gap: 14px;
+  }
+  .profile-card img {
+    width: 56px; height: 56px; border-radius: 50%;
+    border: 3px solid rgba(255,255,255,.35); object-fit: cover;
+  }
+  .profile-card .hello { font-size: .78rem; color: #b8b8d0; }
+  .profile-card .name { font-weight: 700; font-size: 1.05rem; }
+
+  /* ---------- Leave type tabs (signature) ---------- */
+  .type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 18px 0; }
+  .type-btn {
+    border: 2px solid var(--line); background: var(--card); border-radius: var(--radius);
+    padding: 14px 4px 10px; text-align: center; cursor: pointer;
+    transition: transform .15s ease, border-color .15s ease, background .15s ease;
+  }
+  .type-btn .em { font-size: 1.7rem; display: block; }
+  .type-btn .lb { font-size: .74rem; font-weight: 600; color: var(--ink-soft); }
+  .type-btn:hover { transform: translateY(-2px); }
+  .type-btn.active { border-color: var(--ink); }
+  .type-btn.active .lb { color: var(--ink); }
+  .type-btn[data-type="ลาป่วย"].active { background: var(--peach); }
+  .type-btn[data-type="ลากิจ"].active { background: var(--sky); }
+  .type-btn[data-type="ลาธุระส่วนตัว"].active { background: var(--mint); }
+  .type-btn[data-type="อื่น ๆ"].active { background: var(--lilac); }
+
+  /* ---------- Form ---------- */
+  .form-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; }
+  .form-label { font-size: .82rem; font-weight: 600; color: var(--ink); }
+  .form-control, .form-select {
+    border-radius: 12px; border: 1.5px solid var(--line); font-size: .92rem; padding: .55rem .8rem;
+  }
+  .form-control:focus, .form-select:focus { border-color: var(--ink); box-shadow: none; }
+
+  .btn-submit {
+    background: var(--ink); color: #fff; border: none; border-radius: 14px;
+    padding: 13px; font-weight: 700; width: 100%; font-size: 1rem;
+  }
+  .btn-submit:hover { background: #2c2c4a; color: #fff; }
+  .btn-submit:disabled { opacity: .6; }
+
+  /* ---------- Stats ---------- */
+  .stats-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; margin-top: 18px; }
+  .stats-card h6 { font-weight: 700; }
+  .history-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 9px 0; border-bottom: 1px dashed var(--line); font-size: .85rem;
+  }
+  .history-item:last-child { border-bottom: none; }
+  .badge-status { border-radius: 99px; font-size: .7rem; font-weight: 600; padding: 4px 10px; }
+  .st-wait { background: #fff4d6; color: #9a6b00; }
+  .st-ok   { background: var(--mint); color: #0f7b4f; }
+  .st-no   { background: #ffe0e0; color: #c62828; }
+
+  .footer-note { text-align: center; font-size: .72rem; color: var(--ink-soft); margin-top: 26px; }
+  #chartWrap { max-width: 220px; margin: 0 auto; }
+</style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading">
+  <div class="loading-emoji">📮</div>
+  <div style="font-weight:600">กำลังเชื่อมต่อ LINE...</div>
+  <div style="font-size:.8rem;color:var(--ink-soft)">รอแป๊บนึงนะคะ ✨</div>
+</div>
+
+<div class="app-shell" id="app" style="display:none">
+
+  <!-- Profile -->
+  <div class="profile-card">
+    <img id="profilePic" src="" alt="profile">
+    <div>
+      <div class="hello">สวัสดีค่ะ 👋</div>
+      <div class="name" id="displayName">-</div>
+    </div>
+    <div class="ms-auto text-end" style="font-size:.72rem;color:#b8b8d0">
+      📋 ระบบแจ้งลาเรียน<br>คอมพิวเตอร์ศึกษา มจพ.
+    </div>
+  </div>
+
+  <!-- Leave type tabs -->
+  <div class="type-grid" id="typeGrid">
+    <div class="type-btn active" data-type="ลาป่วย"><span class="em">🤒</span><span class="lb">ลาป่วย</span></div>
+    <div class="type-btn" data-type="ลากิจ"><span class="em">📋</span><span class="lb">ลากิจ</span></div>
+    <div class="type-btn" data-type="ลาธุระส่วนตัว"><span class="em">🏠</span><span class="lb">ลาธุระส่วนตัว</span></div>
+    <div class="type-btn" data-type="อื่น ๆ"><span class="em">💬</span><span class="lb">อื่น ๆ</span></div>
+  </div>
+
+  <!-- Form -->
+  <div class="form-card">
+    <div class="mb-3" style="font-weight:700" id="formTitle">🤒 แจ้งลาป่วย</div>
+
+    <div class="row g-3">
+      <div class="col-6">
+        <label class="form-label">ชื่อ 🙋‍♀️</label>
+        <input type="text" class="form-control" id="firstName" placeholder="ชื่อจริง">
+      </div>
+      <div class="col-6">
+        <label class="form-label">นามสกุล</label>
+        <input type="text" class="form-control" id="lastName" placeholder="นามสกุล">
+      </div>
+      <div class="col-7">
+        <label class="form-label">สาขา 🎓</label>
+        <select class="form-select" id="major">
+          <option value="คอมพิวเตอร์ศึกษา (CED)" selected>คอมพิวเตอร์ศึกษา (CED)</option>
+          <option value="คอมพิวเตอร์ศึกษา (TCT)">คอมพิวเตอร์ศึกษา (TCT)</option>
+          <option value="อื่น ๆ">อื่น ๆ</option>
+        </select>
+      </div>
+      <div class="col-5">
+        <label class="form-label">ชั้นปี</label>
+        <select class="form-select" id="year">
+          <option value="1">ปี 1</option><option value="2">ปี 2</option>
+          <option value="3">ปี 3</option><option value="4">ปี 4</option>
+          <option value="5">ปี 5</option>
+        </select>
+      </div>
+      <div class="col-4">
+        <label class="form-label">ชั่วโมง ⏰</label>
+        <input type="number" class="form-control" id="hours" min="1" max="24" value="3">
+      </div>
+      <div class="col-4">
+        <label class="form-label">จำนวนวัน</label>
+        <input type="number" class="form-control" id="days" min="1" max="30" value="1">
+      </div>
+      <div class="col-4">
+        <label class="form-label">วันที่ลา 🗓️</label>
+        <input type="date" class="form-control" id="leaveDate">
+      </div>
+      <div class="col-12">
+        <label class="form-label" id="noteLabel">ข้อความอธิบายเพิ่มเติม ✍️</label>
+        <textarea class="form-control" id="note" rows="3" placeholder="เช่น มีไข้ ไปพบแพทย์ที่โรงพยาบาล..."></textarea>
+      </div>
+      <div class="col-12">
+        <button class="btn-submit" id="btnSubmit">
+          <i class="fa-solid fa-paper-plane me-2"></i>ส่งเรื่องแจ้งลา
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-card">
+    <h6>📊 สถิติการลาของฉัน</h6>
+    <div id="chartWrap"><canvas id="leaveChart"></canvas></div>
+    <div id="historyList" class="mt-3">
+      <div class="text-center" style="font-size:.8rem;color:var(--ink-soft)">ยังไม่มีประวัติการลาเลยค่ะ เก่งมาก! 🌟</div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    ภาควิชาคอมพิวเตอร์ศึกษา คณะครุศาสตร์อุตสาหกรรม มจพ. 💙<br>
+    ออกจากหน้านี้แล้วระบบจะ logout ให้อัตโนมัตินะคะ
+  </div>
+</div>
+
+<!-- Scripts -->
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+
+<script>
+/* ================= CONFIG ================= */
+const LIFF_ID = '2011270501-oSp40ljL';   // 👈 เอามาจาก LINE Developers > LINE Login channel > แท็บ LIFF (รูปแบบ 1234567890-AbcdEfgh)
+const API_URL = 'https://script.google.com/macros/s/AKfycbzMdhbPBbI_niG_ND8QCLxMa7tQdhIDfkPjiumHWeQEwDIinhnLUAd4PM0Ik8icO0f4/exec';   // 👈 เอามาจาก Apps Script > Deploy > Web app (ต้องลงท้ายด้วย /exec)
+
+const TYPE_EMOJI = { 'ลาป่วย':'🤒', 'ลากิจ':'📋', 'ลาธุระส่วนตัว':'🏠', 'อื่น ๆ':'💬' };
+let profile = null;
+let currentType = 'ลาป่วย';
+let chart = null;
+
+/* ================= LIFF INIT (1. login ทันที) ================= */
+async function initApp() {
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) {
+      liff.login();   // พาไป login LINE ทันที
+      return;
+    }
+    profile = await liff.getProfile();
+    document.getElementById('profilePic').src = profile.pictureUrl || '';
+    document.getElementById('displayName').textContent = profile.displayName;
+    document.getElementById('leaveDate').valueAsDate = new Date();
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    loadHistory();
+  } catch (err) {
+    document.getElementById('loading').innerHTML =
+      '<div class="loading-emoji">😿</div><div>เชื่อมต่อ LINE ไม่สำเร็จ<br><small>' + err.message + '</small></div>';
+  }
+}
+
+/* ================= 4. Logout อัตโนมัติเมื่อออกจากหน้าเว็บ ================= */
+window.addEventListener('pagehide', () => {
+  try { if (liff.isLoggedIn()) liff.logout(); } catch (e) {}
+});
+
+/* ================= แท็บเลือกประเภทการลา ================= */
+document.getElementById('typeGrid').addEventListener('click', (e) => {
+  const btn = e.target.closest('.type-btn');
+  if (!btn) return;
+  document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentType = btn.dataset.type;
+  document.getElementById('formTitle').textContent =
+    `${TYPE_EMOJI[currentType]} ${currentType === 'อื่น ๆ' ? 'ข้อความถึงผู้สอน' : 'แจ้ง' + currentType}`;
+  document.getElementById('noteLabel').textContent =
+    currentType === 'อื่น ๆ' ? 'ข้อความถึงผู้สอน 💬 (จำเป็น)' : 'ข้อความอธิบายเพิ่มเติม ✍️';
+});
+
+/* ================= ส่งเรื่องแจ้งลา ================= */
+document.getElementById('btnSubmit').addEventListener('click', async () => {
+  const d = {
+    userId: profile.userId,
+    displayName: profile.displayName,
+    firstName: val('firstName'),
+    lastName: val('lastName'),
+    major: val('major'),
+    year: val('year'),
+    hours: val('hours'),
+    days: val('days'),
+    leaveDate: formatThaiDate(val('leaveDate')),
+    note: val('note'),
+    leaveType: currentType
+  };
+
+  // validate
+  if (!d.firstName || !d.lastName) return warn('กรอกชื่อ–นามสกุลก่อนนะคะ 🙏');
+  if (!val('leaveDate')) return warn('เลือกวันที่จะลาด้วยค่ะ 🗓️');
+  if (currentType === 'อื่น ๆ' && !d.note) return warn('พิมพ์ข้อความถึงผู้สอนก่อนนะคะ 💬');
+
+  const confirm = await Swal.fire({
+    title: `${TYPE_EMOJI[currentType]} ยืนยันการแจ้งลา?`,
+    html: `<div style="text-align:left;font-size:.9rem">
+      <b>${d.firstName} ${d.lastName}</b> · ปี ${d.year}<br>
+      ${currentType} วันที่ <b>${d.leaveDate}</b><br>
+      จำนวน ${d.days} วัน (${d.hours} ชม.)</div>`,
+    showCancelButton: true,
+    confirmButtonText: 'ส่งเลย! 🚀',
+    cancelButtonText: 'ขอแก้ก่อน',
+    confirmButtonColor: '#1a1a2e'
+  });
+  if (!confirm.isConfirmed) return;
+
+  const btn = document.getElementById('btnSubmit');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>กำลังส่ง...';
+
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },  // กัน CORS preflight
+      body: JSON.stringify({ action: 'submitLeave', data: d })
+    });
+    const json = await res.json();
+    if (json.status !== 'ok') throw new Error(json.message);
+
+    await Swal.fire({
+      icon: 'success',
+      title: 'ส่งเรื่องเรียบร้อย! 🎉',
+      html: `รหัสคำขอ <b>${json.requestId}</b><br><small>สรุปการลาถูกส่งไปที่ LINE ของคุณแล้ว รอผลอนุมัติได้เลยค่ะ 💌</small>`,
+      confirmButtonColor: '#1a1a2e'
+    });
+    document.getElementById('note').value = '';
+    loadHistory();
+  } catch (err) {
+    Swal.fire({ icon: 'error', title: 'ส่งไม่สำเร็จ 😿', text: err.message, confirmButtonColor: '#1a1a2e' });
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-paper-plane me-2"></i>ส่งเรื่องแจ้งลา';
+  }
+});
+
+/* ================= สถิติ + ประวัติ ================= */
+async function loadHistory() {
+  try {
+    const res = await fetch(`${API_URL}?action=getHistory&userId=${encodeURIComponent(profile.userId)}`);
+    const json = await res.json();
+    const list = json.data || [];
+    if (!list.length) return;
+
+    // นับตามประเภท → doughnut
+    const counts = {};
+    list.forEach(x => counts[x.leaveType] = (counts[x.leaveType] || 0) + 1);
+    const labels = Object.keys(counts).map(t => `${TYPE_EMOJI[t] || '📝'} ${t}`);
+    const palette = { 'ลาป่วย':'#ffc9a3', 'ลากิจ':'#a9c6ff', 'ลาธุระส่วนตัว':'#9fe8c5', 'อื่น ๆ':'#cdb2f5' };
+    const colors = Object.keys(counts).map(t => palette[t] || '#d8d8e0');
+
+    if (chart) chart.destroy();
+    chart = new Chart(document.getElementById('leaveChart'), {
+      type: 'doughnut',
+      data: { labels, datasets: [{ data: Object.values(counts), backgroundColor: colors, borderWidth: 0 }] },
+      options: {
+        cutout: '62%',
+        plugins: { legend: { position: 'bottom', labels: { font: { family: 'IBM Plex Sans Thai', size: 11 } } } }
+      }
+    });
+
+    // ประวัติ 5 รายการล่าสุด
+    const stClass = { 'รออนุมัติ':'st-wait', 'อนุมัติ':'st-ok', 'ไม่อนุมัติ':'st-no' };
+    const stEmoji = { 'รออนุมัติ':'⏳', 'อนุมัติ':'✅', 'ไม่อนุมัติ':'❌' };
+    document.getElementById('historyList').innerHTML = list.slice(0, 5).map(x => `
+      <div class="history-item">
+        <div>${TYPE_EMOJI[x.leaveType] || '📝'} <b>${x.leaveType}</b>
+          <span style="color:var(--ink-soft)"> · ${x.leaveDate} · ${x.days} วัน</span></div>
+        <span class="badge-status ${stClass[x.status] || 'st-wait'}">${stEmoji[x.status] || '⏳'} ${x.status}</span>
+      </div>`).join('');
+  } catch (e) { /* เงียบไว้ ไม่ให้รบกวน UX */ }
+}
+
+/* ================= helpers ================= */
+const val = id => document.getElementById(id).value.trim();
+const warn = msg => { Swal.fire({ icon: 'warning', title: msg, confirmButtonColor: '#1a1a2e' }); return false; };
+function formatThaiDate(iso) {
+  if (!iso) return '';
+  const [y, m, d] = iso.split('-');
+  const months = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  return `${parseInt(d)} ${months[parseInt(m) - 1]} ${parseInt(y) + 543}`;
+}
+
+initApp();
+</script>
+</body>
+</html>
